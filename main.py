@@ -6,7 +6,7 @@ import json
 import requests
 import time
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, date
 from database import OutageDatabase
 
 
@@ -73,6 +73,77 @@ def minutes_to_hhmm(minutes: int) -> str:
     return f"{hours:02d}:{mins:02d}"
 
 
+def date_ddmmyyyy_to_yyyymmdd(date_str: str) -> str:
+    """Конвертирует дату из формата DD.MM.YYYY в YYYY-MM-DD
+
+    Args:
+        date_str: Дата в формате DD.MM.YYYY
+
+    Returns:
+        str: Дата в формате YYYY-MM-DD или None если формат неверный
+    """
+    try:
+        dt = datetime.strptime(date_str, "%d.%m.%Y")
+        return dt.strftime("%Y-%m-%d")
+    except ValueError:
+        return None
+
+
+def get_today_date_yyyymmdd() -> str:
+    """Возвращает сегодняшнюю дату в формате YYYY-MM-DD
+
+    Returns:
+        str: Сегодняшняя дата в формате YYYY-MM-DD
+    """
+    return date.today().strftime("%Y-%m-%d")
+
+
+def show_schedule_for_date(db: OutageDatabase, device_key: str, date: str):
+    """Показывает расписание для устройства на конкретную дату
+
+    Args:
+        db: Экземпляр базы данных
+        device_key: Ключ устройства
+        date: Дата в формате YYYY-MM-DD
+    """
+    schedule = db.get_device_schedule(device_key, date=date)
+
+    if schedule:
+        print(f"\nДанные для устройства '{device_key}' на {date}:")
+        for item in schedule[:50]:
+            start_time = minutes_to_hhmm(item["start_minute"])
+            end_time = minutes_to_hhmm(item["end_minute"])
+            print(f"  {item['slot_type']}: {start_time}-{end_time}")
+    else:
+        print(f"Данные для устройства '{device_key}' на {date} не найдены")
+
+
+def show_all_devices_for_date(db: OutageDatabase, date: str):
+    """Показывает сводку по всем устройствам на конкретную дату
+
+    Args:
+        db: Экземпляр базы данных
+        date: Дата в формате YYYY-MM-DD
+    """
+    all_schedules = db.get_all_devices_with_schedules()
+
+    found = False
+    for device_key in sorted(all_schedules.keys()):
+        schedules = [
+            s for s in all_schedules[device_key] if s.get("schedule_date") == date
+        ]
+        if schedules:
+            found = True
+            print(f"\nУстройство {device_key}:")
+            for item in schedules[:20]:
+                start_time = minutes_to_hhmm(item["start_minute"])
+                end_time = minutes_to_hhmm(item["end_minute"])
+                print(f"  {item['slot_type']}: {start_time}-{end_time}")
+
+    if not found:
+        print(f"Данные на дату {date} не найдены")
+
+
 def main():
     """Основная функция приложения"""
     print("=== Система управления плановыми отключениями ===")
@@ -105,13 +176,78 @@ def main():
                 print(f"  Последнее обновление: {stats['last_updated']}")
 
             # Пример получения данных для конкретного устройства
-            print(f"\nПример данных для устройства '1.1':")
-            schedule = db.get_device_schedule("1.1", is_today=True)
+            print(f"\nПример данных для устройства '28.1':")
+            schedule = db.get_device_schedule("28.1", is_today=True)
             if schedule:
                 for item in schedule[:30]:  # Показываем первые 30 слотов
                     start_time = minutes_to_hhmm(item["start_minute"])
                     end_time = minutes_to_hhmm(item["end_minute"])
                     print(f"  {item['slot_type']}: {start_time}-{end_time}")
+
+            # Инициализируем значения по умолчанию
+            default_device = "28.1"
+            default_date = get_today_date_yyyymmdd()
+
+            # Интерактивное меню для просмотра по датам
+            while True:
+                print("\n" + "=" * 50)
+                print("Меню:")
+                print(
+                    f"1 - Просмотр устройства на конкретную дату (по умолчанию: {default_device})"
+                )
+                print("2 - Просмотр всех устройств на конкретную дату")
+                print("3 - Выход")
+                print("=" * 50)
+
+                choice = input("Выберите опцию (1-3): ").strip()
+
+                if choice == "1":
+                    device_input = input(
+                        f"Введите ключ устройства [{default_device}]: "
+                    ).strip()
+                    device_key = device_input if device_input else default_device
+
+                    today_formatted = f"{default_date.split('-')[2]}.{default_date.split('-')[1]}.{default_date.split('-')[0]}"
+                    date_input = input(
+                        f"Введите дату DD.MM.YYYY [{today_formatted}]: "
+                    ).strip()
+
+                    if date_input:
+                        date_yyyymmdd = date_ddmmyyyy_to_yyyymmdd(date_input)
+                        if date_yyyymmdd is None:
+                            print(
+                                "Ошибка: неверный формат даты. Используйте DD.MM.YYYY"
+                            )
+                            continue
+                    else:
+                        date_yyyymmdd = default_date
+
+                    show_schedule_for_date(db, device_key, date_yyyymmdd)
+
+                elif choice == "2":
+                    today_formatted = f"{default_date.split('-')[2]}.{default_date.split('-')[1]}.{default_date.split('-')[0]}"
+                    date_input = input(
+                        f"Введите дату DD.MM.YYYY [{today_formatted}]: "
+                    ).strip()
+
+                    if date_input:
+                        date_yyyymmdd = date_ddmmyyyy_to_yyyymmdd(date_input)
+                        if date_yyyymmdd is None:
+                            print(
+                                "Ошибка: неверный формат даты. Используйте DD.MM.YYYY"
+                            )
+                            continue
+                    else:
+                        date_yyyymmdd = default_date
+
+                    show_all_devices_for_date(db, date_yyyymmdd)
+
+                elif choice == "3":
+                    print("\nПрограмма завершена!")
+                    break
+
+                else:
+                    print("Неверная опция. Попробуйте снова.")
         else:
             print("Ошибка при сохранении данных!")
     else:
