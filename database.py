@@ -101,7 +101,10 @@ class OutageDatabase:
                             updated_on=device_data.get("updatedOn"),
                         )
 
-                return True
+                    # Нормализуем расписания после импорта (удаляем дубликаты по device_id+schedule_date)
+                    self._normalize_schedules(conn)
+
+                    return True
         except Exception as e:
             print(f"Ошибка при сохранении данных: {e}")
             return False
@@ -216,6 +219,73 @@ class OutageDatabase:
             )
 
         return schedule_id
+
+    def _normalize_schedules(self, conn: sqlite3.Connection) -> None:
+        """Нормализует таблицы outage_schedules и time_slots.
+
+        Для каждой пары (device_id, schedule_date) оставляет самую свежую
+        запись расписания (по updated_on), собирает уникальные слоты из всех
+        дубликатов и записывает их как единый набор слотов.
+        """
+        cursor = conn.execute(
+            "SELECT device_id, schedule_date, COUNT(*) as c FROM outage_schedules GROUP BY device_id, schedule_date HAVING c > 1"
+        )
+        groups = cursor.fetchall()
+
+        for g in groups:
+            device_id = g[0]
+            schedule_date = g[1]
+
+            # Получаем все расписания для этой пары
+            rows = conn.execute(
+                "SELECT id, status, timezone_offset, is_today, updated_on FROM outage_schedules WHERE device_id = ? AND schedule_date = ?",
+                (device_id, schedule_date),
+            ).fetchall()
+
+            if not rows:
+                continue
+
+            # Выбираем запись с максимальным updated_on (если updated_on нет, используем минимальную дату)
+            def parsed_upd(r):
+                u = r[4]
+                try:
+                    return datetime.fromisoformat(u) if u else datetime.min
+                except Exception:
+                    return datetime.min
+
+            rows_sorted = sorted(rows, key=parsed_upd, reverse=True)
+            keep = rows_sorted[0]
+            keep_id = keep[0]
+
+            # Собираем уникальные слоты со всех schedule_id
+            slot_set = set()
+            for r in rows:
+                sid = r[0]
+                for s in conn.execute(
+                    "SELECT start_minute, end_minute, slot_type FROM time_slots WHERE schedule_id = ?",
+                    (sid,),
+                ).fetchall():
+                    slot_set.add((s[0], s[1], s[2]))
+
+            # Удаляем все расписания для этой пары (каскадно удалятся слоты)
+            conn.execute(
+                "DELETE FROM outage_schedules WHERE device_id = ? AND schedule_date = ?",
+                (device_id, schedule_date),
+            )
+
+            # Вставляем одну запись (используем данные из keep)
+            conn.execute(
+                "INSERT INTO outage_schedules (device_id, schedule_date, status, timezone_offset, is_today, updated_on) VALUES (?, ?, ?, ?, ?, ?)",
+                (device_id, schedule_date, keep[1], keep[2], keep[3], keep[4]),
+            )
+            new_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+            # Вставляем объединённые уникальные слоты
+            for st, en, typ in sorted(slot_set):
+                conn.execute(
+                    "INSERT INTO time_slots (schedule_id, start_minute, end_minute, slot_type) VALUES (?, ?, ?, ?)",
+                    (new_id, st, en, typ),
+                )
 
     def get_device_schedule(
         self,
