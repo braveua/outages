@@ -140,27 +140,27 @@ def merge_definite_slots(slots: list) -> list:
 
 
 def show_schedule_for_date(db: OutageDatabase, device_key: str, date: str):
-    """Показывает расписание для устройства на конкретную дату
+    """Показывает расписание для групи на конкретную дату
 
     Args:
         db: Экземпляр базы данных
-        device_key: Ключ устройства
+        device_key: Ключ групи
         date: Дата в формате YYYY-MM-DD
     """
     schedule = db.get_device_schedule(device_key, date=date)
 
     if schedule:
-        print(f"\nДанные для устройства '{device_key}' на {date}:")
+        print(f"\nДанные для групи '{device_key}' на {date}:")
         for item in schedule[:50]:
             start_time = minutes_to_hhmm(item["start_minute"])
             end_time = minutes_to_hhmm(item["end_minute"])
             print(f"  {item['slot_type']}: {start_time}-{end_time}")
     else:
-        print(f"Данные для устройства '{device_key}' на {date} не найдены")
+        print(f"Данные для групи '{device_key}' на {date} не найдены")
 
 
 def show_all_devices_for_date(db: OutageDatabase, date: str):
-    """Показывает сводку по всем устройствам на конкретную дату
+    """Показывает сводку по всем группам на конкретную дату
 
     Args:
         db: Экземпляр базы данных
@@ -175,7 +175,7 @@ def show_all_devices_for_date(db: OutageDatabase, date: str):
         ]
         if schedules:
             found = True
-            print(f"\nУстройство {device_key}:")
+            print(f"\nГрупа {device_key}:")
             for item in schedules[:20]:
                 start_time = minutes_to_hhmm(item["start_minute"])
                 end_time = minutes_to_hhmm(item["end_minute"])
@@ -194,7 +194,7 @@ def main():
         "--menu", action="store_true", help="Показать интерактивное меню"
     )
     parser.add_argument(
-        "--device", default="28.1", help="Ключ устройства (по умолчанию 28.1)"
+        "--group", default="28.1", help="Ключ групи (по умолчанию 28.1)"
     )
     parser.add_argument(
         "-v",
@@ -236,7 +236,7 @@ def main():
     stats = db.get_stats()
     if args.verbose:
         print(f"\nСтатистика базы данных:")
-        print(f"  Устройств: {stats['devices_count']}")
+        print(f"  Групи: {stats['devices_count']}")
         print(f"  Расписаний: {stats['schedules_count']}")
         print(f"  Временных слотов: {stats['slots_count']}")
 
@@ -246,8 +246,8 @@ def main():
         if stats["last_updated"]:
             print(f"  Последнее обновление: {stats['last_updated']}")
 
-    # Определяем устройство и дату вывода
-    device = args.device
+    # Определяем групу и дату вывода
+    device = args.group
     if args.date:
         if "." in args.date:
             date_yyyymmdd = date_ddmmyyyy_to_yyyymmdd(args.date)
@@ -336,17 +336,15 @@ def main():
         while True:
             print("\n" + "=" * 50)
             print("Меню:")
-            print(
-                f"1 - Просмотр устройства на конкретную дату (по умолчанию: {device})"
-            )
-            print("2 - Просмотр всех устройств на конкретную дату")
+            print(f"1 - Просмотр групи на конкретну дату (по умолчанию: {device})")
+            print("2 - Просмотр всех групп на конкретну дату")
             print("3 - Выход")
             print("=" * 50)
 
             choice = input("Выберите опцию (1-3): ").strip()
 
             if choice == "1":
-                device_input = input(f"Введите ключ устройства [{device}]: ").strip()
+                device_input = input(f"Введите ключ групи [{device}]: ").strip()
                 device_key = device_input if device_input else device
 
                 today_formatted = f"{default_date.split('-')[2]}.{default_date.split('-')[1]}.{default_date.split('-')[0]}"
