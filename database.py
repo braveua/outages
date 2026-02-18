@@ -101,10 +101,10 @@ class OutageDatabase:
                             updated_on=device_data.get("updatedOn"),
                         )
 
-                    # Нормализуем расписания после импорта (удаляем дубликаты по device_id+schedule_date)
-                    self._normalize_schedules(conn)
+                # Нормализуем расписания после импорта всех устройств (удаляем дубликаты по device_id+schedule_date)
+                self._normalize_schedules(conn)
 
-                    return True
+                return True
         except Exception as e:
             print(f"Ошибка при сохранении данных: {e}")
             return False
